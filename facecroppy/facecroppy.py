@@ -9,7 +9,7 @@ class FaceCroppy:
         self.image = cv2.imread(image_path)
         self.height, self.width, _ = self.image.shape
         self.desired_size = desired_size
-        self.margin_ration = margin_ratio
+        self.margin_ratio = margin_ratio
         self.detector = MTCNN()
 
     def detect_faces(self):
@@ -34,9 +34,9 @@ class FaceCroppy:
             h = self.desired_size[1]
         return x, y, w, h
 
-    def add_margin_to_face_box(self, x, y, w, h, margin_ratio):
-        margin_x = int(w * margin_ratio)
-        margin_y = int(h * margin_ratio)
+    def add_margin_to_face_box(self, x, y, w, h):
+        margin_x = int(w * self.margin_ratio)
+        margin_y = int(h * self.margin_ratio)
         x1, y1 = max(0, x - margin_x), max(0, y - margin_y)
         x2, y2 = min(self.width, x + w + margin_x), min(self.height, y + h + margin_y)
         return x1, y1, x2, y2
@@ -103,11 +103,11 @@ class FaceCroppy:
         face = self.select_best_face(faces)
 
         if face:
-            x, y, w, h = self.get_face_bounding_box(face, self.desired_size)
-            x1, y1, x2, y2 = self.add_margin_to_face_box(x, y, w, h, self.margin_ratio)
+            x, y, w, h = self.get_face_bounding_box(face)
+            x1, y1, x2, y2 = self.add_margin_to_face_box(x, y, w, h)
 
             cropped_image_with_margin = self.image[y1:y2, x1:x2]
-            padded_image = self.resize_and_pad_image(cropped_image_with_margin, self.desired_size)
+            padded_image = self.resize_and_pad_image(cropped_image_with_margin)
 
             cv2.imwrite(output_path, padded_image)
             print(f"Face cropped and saved as {output_path}.")
