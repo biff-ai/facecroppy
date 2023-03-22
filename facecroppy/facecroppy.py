@@ -5,135 +5,114 @@ class NoFaceException(Exception): pass
 class SmallImageException(Exception): pass
 
 class FaceCroppy:
-  def __init__(self, image_path, desired_size=(512, 768)):
-    self.desired_size = desired_size
-    self.image_path = image_path
+    def __init__(self, image_path, desired_size=(768, 768), margin_ratio=0.2):
+        self.image = cv2.imread(image_path)
+        self.height, self.width, _ = self.image.shape
+        self.desired_size = desired_size
+        self.margin_ratio = margin_ratio
+        self.detector = MTCNN()
 
-  def detect_faces(self, pixels):
-      # create the detector, using default weights
-      detector = MTCNN()
-      
-      # detect faces in the image
-      faces = detector.detect_faces(pixels)
+    def detect_faces(self):
+        faces = self.detector.detect_faces(self.image)
+        return faces
 
-      # if no faces
-      if len(faces) == 0:
-        raise NoFaceException(f"No face detected")
+    def select_best_face(self, faces):
+        if faces:
+            face = max(faces, key=lambda x: x['confidence'])
+            return face
+        else:
+            print("No face detected in the image.")
+            return None
 
-      return faces
-  
-  def get_facebox(self, faces):
-        x1, y1, width, height = list(faces[0]['box'])
-        x1, y1, width, height = int(x1), int(y1), int(width), int(height)
-        # extract face from the first face
-        x2, y2 = x1 + width, y1 + height
-        return x1, y1, x2, y2, width, height
+    def get_face_bounding_box(self, face):
+        x, y, w, h = face['box']
+        if w < self.desired_size[0]:
+            x = max(0, int(x - (self.desired_size[0]-w)/2))
+            w = self.desired_size[0]
+        if h < self.desired_size[1]:
+            y = max(0, int(y - (self.desired_size[1]-h)/2))
+            h = self.desired_size[1]
+        return x, y, w, h
 
-  def resize_and_crop(self, image, desired_size=(512, 768)):
-      height, width, _ = image.shape
-      ratio = min(width/desired_size[0], height/desired_size[1])
-      new_width, new_height = int(width/ratio), int(height/ratio)
-      image = cv2.resize(image, (new_width, new_height))
-      height, width, _ = image.shape
-      left = int((width - desired_size[0]) / 2)
-      top = int((height - desired_size[1]) / 2)
-      right = left + desired_size[0]
-      bottom = top + desired_size[1]
-      image = image[top:bottom, left:right]
-      return image
+    def add_margin_to_face_box(self, x, y, w, h):
+        margin_x = int(w * self.margin_ratio)
+        margin_y = int(h * self.margin_ratio)
+        x1, y1 = max(0, x - margin_x), max(0, y - margin_y)
+        x2, y2 = min(self.width, x + w + margin_x), min(self.height, y + h + margin_y)
+        return x1, y1, x2, y2
+
+    def crop_image_with_margin(self, x1, y1, x2, y2):
+        cropped_image_with_margin = self.image[y1:y2, x1:x2]
+        return cropped_image_with_margin
+
+    def add_padding(self, x1, y1, x2, y2):
+        padding_x = max(0, int((self.desired_size[0] - (x2 - x1)) / 2))
+        padding_y = max(0, int((self.desired_size[1] - (y2 - y1)) / 2))
+        x1, y1 = max(0, x1 - padding_x), max(0, y1 - padding_y)
+        x2, y2 = min(self.width, x2 + padding_x), min(self.height, y2 + padding_y)
+        return x1, y1, x2, y2
+
+    def calculate_aspect_ratio(self, x1, y1, x2, y2):
+        aspect_ratio = float(x2 - x1) / float(y2 - y1)
+        return aspect_ratio
+
+    def resize_image(self, cropped_image_with_margin, aspect_ratio):
+        new_width = self.desired_size[0]
+        new_height = int(new_width / aspect_ratio)
+
+        if new_height > self.desired_size[1]:
+            new_height = self.desired_size[1]
+            new_width = int(new_height * aspect_ratio)
+
+        resized_cropped_image = cv2.resize(cropped_image_with_margin, (new_width, new_height))
+        return resized_cropped_image
+
+    def add_border(self, resized_cropped_image):
+        padding_top = max(0, (self.desired_size[1] - resized_cropped_image.shape[0]) // 2)
+        padding_bottom = max(0, self.desired_size[1] - resized_cropped_image.shape[0] - padding_top)
+        padding_left = max(0, (self.desired_size[0] - resized_cropped_image.shape[1]) // 2)
+        padding_right = max(0, self.desired_size[0] - resized_cropped_image.shape[1] - padding_left)
+
+        padded_image = cv2.copyMakeBorder(resized_cropped_image, padding_top, padding_bottom, padding_left, padding_right, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+        return padded_image
+
+    def resize_and_pad_image(self, cropped_image):
+        height, width, _ = cropped_image.shape
+        aspect_ratio = float(width) / float(height)
+
+        new_width = self.desired_size[0]
+        new_height = int(new_width / aspect_ratio)
+
+        if new_height > self.desired_size[1]:
+            new_height = self.desired_size[1]
+            new_width = int(new_height * aspect_ratio)
+
+        resized_image = cv2.resize(cropped_image, (new_width, new_height))
+
+        padding_top = (self.desired_size[1] - new_height) // 2
+        padding_bottom = self.desired_size[1] - new_height - padding_top
+        padding_left = (self.desired_size[0] - new_width) // 2
+        padding_right = self.desired_size[0] - new_width - padding_left
+
+        padded_image = cv2.copyMakeBorder(resized_image, padding_top, padding_bottom, padding_left, padding_right, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+        return padded_image
 
 
-  def load_image(self):
-      # load image from file
-      pixels = cv2.imread(self.image_path)
+    def crop(self, output_path):
+        faces = self.detect_faces()
+        face = self.select_best_face(faces)
 
-      # Check if any axis is smaller than desired size
-      if self.desired_size[0] >= pixels.shape[1] or self.desired_size[1] >= pixels.shape[0]:
-        raise SmallImageException(f"""TODO: Upscale? Image is too small. Axis need to be minimum {self.desired_size[0]} x {self.desired_size[1]} px while image is {pixels.shape[1]} x {pixels.shape[0]}""")
+        if face:
+            x, y, w, h = self.get_face_bounding_box(face)
+            x1, y1, x2, y2 = self.add_margin_to_face_box(x, y, w, h)
 
-      return pixels
+            cropped_image_with_margin = self.image[y1:y2, x1:x2]
+            padded_image = self.resize_and_pad_image(cropped_image_with_margin)
 
-
-
-  def crop(self):
-
-      # load image
-      pixels = self.load_image()
-
-      # detect faces in the image
-      try:
-        faces = self.detect_faces(pixels) 
-        x1, y1, x2, y2, width, height =  self.get_facebox(faces)
-        face_pixels = pixels[y1:y2, x1:x2]
-      except NoFaceException:
-        print(f"""No face detected in {self.image_path}
-      
-        Warning: Image will be center-cropped!
-        
-        """)
-
-        return self.resize_and_crop(pixels, self.desired_size)
-
-      # calculate the ratio between the desired size and the face size
-      ratio = max(self.desired_size[0] / face_pixels.shape[1], self.desired_size[1] / face_pixels.shape[0])
-      
-      # expand the face area to meet the desired size if the face is smaller
-      if ratio > 1:
-          print(ratio)
-          desired_ratio = self.desired_size[0]/self.desired_size[1]
-          # calculate the new width and height of the face
-          new_width = int(face_pixels.shape[1] * (ratio/ (3 if ratio > 4 else 1.5)))
-          new_height = int(new_width / desired_ratio)
-          
-          # calculate the new x and y of the face
-          x_diff = x1 - (new_width - width) // 2
-          x = max(0, x_diff)
-          #if x_diff < 0:
-          #  new_width -= abs(x_diff)
-
-          y_diff =  y1 - (new_height - height) // 2
-          y = max(0, y_diff)
-          #if y_diff < 0:
-            #new_height -= abs(y_diff)
-
-          print(x1, y1, x_diff, y_diff)
-          # make sure the crop won't exceed the original image size
-          new_width = min(new_width, pixels.shape[1] - x_diff)
-          new_height = min(new_height, pixels.shape[0] - y_diff)
-          
-          # crop the original image with the face in the center
-          face_pixels = pixels[y:y+new_height - (y_diff if y_diff < 0 else 0), x:x+new_width - (x_diff if x_diff < 0 else 0)]
-
-          # resize the face to the desired size
-          face_pixels = cv2.resize(face_pixels, self.desired_size)
-      
-          return face_pixels
-
-      else:
-          padding = 1
-          w_add = int(width * padding)
-          h_add = int(height * padding)
-          x1 -= w_add
-          y1 -= h_add
-          width += 2 * w_add
-          height += 2 * h_add
-
-          # Make sure the cropping area stays within the image bounds
-          if x1 < 0:
-              x1 = 0
-          if y1 < 0:
-              y1 = 0
-          if x1 + width > pixels.shape[1]:
-              width = pixels.shape[1] - x1
-          if y1 + height > pixels.shape[0]:
-              height = pixels.shape[0] - y1
-
-          # Crop the face
-          face = pixels[y1:y1+height, x1:x1+width]
-
-          # Resize the face to desired size
-          face = cv2.resize(face, self.desired_size)
-
-          return face
-
+            cv2.imwrite(output_path, padded_image)
+            print(f"Face cropped and saved as {output_path}.")
+            return padded_image
+        else:
+            raise NoFaceException(f"No face detected")
+            
 

@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='facecroppy',
-    version='0.1.0',
+    version='0.2.0',
     author='Christophe Carvenius',
     author_email='christophe@biff.ai',
     description='A library for smart face cropping from images',
@@ -11,6 +11,7 @@ setup(
         'mtcnn>=0.1.1',
         'opencv-python>=4.1.0',
         'numpy>=1.14.5',
+        'tensorflow>=2.11.1'
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
