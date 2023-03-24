@@ -1,5 +1,7 @@
 facecroppy
 ==========
+BIF-0001 
+
 A smart face cropping library.
 
 **Usage**
@@ -9,4 +11,4 @@ fc = FaceCroppy("{path_to_image}")
 cropped_image = fc.crop()
 ```
 
-BIF-0001
+[Read more about BIF-0001](https://biff.ai)
