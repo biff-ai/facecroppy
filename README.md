@@ -4,6 +4,11 @@ BIF-0001
 
 A smart face cropping library.
 
+**Install**
+```
+pip install facecroppy
+```
+
 **Usage**
 ```python
 from facecroppy import FaceCroppy
